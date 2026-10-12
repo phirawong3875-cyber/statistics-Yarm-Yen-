@@ -1,0 +1,281 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <title>Yarm Yen Stats</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101820;
+      --panel: #1b2836;
+      --green: #55e6a5;
+      --muted: #a7b5c4;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: #f5f7fa;
+      font-family: system-ui, sans-serif;
+    }
+
+    header {
+      padding: 28px 18px;
+      text-align: center;
+      background: linear-gradient(135deg, #163d32, #101820);
+      border-bottom: 1px solid #294338;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(25px, 7vw, 38px);
+    }
+
+    header p {
+      color: var(--muted);
+      margin-bottom: 0;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 20px 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      padding: 16px;
+      border: 1px solid #304052;
+      border-radius: 14px;
+      margin-bottom: 16px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #f0b64b;
+    }
+
+    .dot.live { background: var(--green); }
+    .dot.error { background: #ff7272; }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    select, button {
+      background: #26384a;
+      color: white;
+      border: 1px solid #40556b;
+      border-radius: 9px;
+      padding: 11px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      background: #176d4c;
+      border-color: #25865f;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 480px;
+    }
+
+    th, td {
+      padding: 13px 10px;
+      text-align: left;
+      border-bottom: 1px solid #304052;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    td:first-child {
+      color: var(--green);
+      font-weight: bold;
+    }
+
+    .message {
+      text-align: center;
+      color: var(--muted);
+      padding: 22px 10px;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⛏️ Yarm Yen Stats</h1>
+    <p>Minecraft Player Leaderboard</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="status">
+        <span class="dot" id="dot"></span>
+        <span id="status">กำลังรอการเชื่อมต่อ API</span>
+      </div>
+
+      <div class="controls">
+        <select id="stat">
+          <option value="minecraft:deaths">จำนวนครั้งที่ตาย</option>
+          <option value="minecraft:player_kills">ฆ่าผู้เล่น</option>
+          <option value="minecraft:mob_kills">ฆ่ามอนสเตอร์</option>
+          <option value="minecraft:play_time">เวลาเล่น</option>
+        </select>
+        <button id="refresh">รีเฟรชข้อมูล</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>🏆 อันดับผู้เล่น</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>อันดับ</th>
+              <th>ผู้เล่น</th>
+              <th>สถิติ</th>
+            </tr>
+          </thead>
+          <tbody id="ranking">
+            <tr><td colspan="3" class="message">
+              กำลังรอข้อมูลจากเซิร์ฟเวอร์...
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <footer>
+      Yarm Yen Stats · อัปเดตอัตโนมัติทุก 5 วินาที
+    </footer>
+  </main>
+
+  <script>
+    // ใส่ URL API จริงของ PlayerStats API ตรงนี้
+    const API_BASE = "";
+
+    const ranking = document.getElementById("ranking");
+    const statusText = document.getElementById("status");
+    const dot = document.getElementById("dot");
+    const statSelect = document.getElementById("stat");
+    const refreshButton = document.getElementById("refresh");
+
+    function setStatus(message, state = "") {
+      statusText.textContent = message;
+      dot.className = "dot " + state;
+    }
+
+    function showMessage(message) {
+      ranking.replaceChildren();
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 3;
+      td.className = "message";
+      td.textContent = message;
+      tr.appendChild(td);
+      ranking.appendChild(tr);
+    }
+
+    async function loadRanking() {
+      if (!API_BASE) {
+        setStatus("ยังไม่ได้ตั้งค่า URL ของ API");
+        showMessage("รอเชื่อมต่อ PlayerStats API");
+        return;
+      }
+
+      setStatus("กำลังโหลดข้อมูล...");
+
+      try {
+        const stat = encodeURIComponent(statSelect.value);
+        const url = `${API_BASE.replace(/\/$/, "")}/moss/top/${stat}?limit=10`;
+
+        const response = await fetch(url, {
+          headers: { "Accept": "application/json" },
+          cache: "no-store"
+        });
+
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        const data = await response.json();
+
+        // โครงสร้าง JSON อาจต่างกันตามเวอร์ชัน API
+        const players = Array.isArray(data)
+          ? data
+          : data.players || data.results || data.data || [];
+
+        if (!Array.isArray(players) || players.length === 0) {
+          throw new Error("ไม่พบข้อมูล หรือรูปแบบ JSON ไม่ตรงกัน");
+        }
+
+        ranking.replaceChildren();
+
+        players.slice(0, 10).forEach((player, index) => {
+          const tr = document.createElement("tr");
+          const rank = document.createElement("td");
+          const name = document.createElement("td");
+          const score = document.createElement("td");
+
+          rank.textContent = index + 1;
+          name.textContent =
+            player.name || player.username || player.player || "Unknown";
+          score.textContent =
+            player.value ?? player.score ?? player.stat ?? "—";
+
+          tr.append(rank, name, score);
+          ranking.appendChild(tr);
+        });
+
+        setStatus("อัปเดตล่าสุด: " +
+          new Date().toLocaleTimeString("th-TH"), "live");
+      } catch (error) {
+        setStatus("เชื่อมต่อ API ไม่สำเร็จ", "error");
+        showMessage(error.message +
+          " — ตรวจสอบ URL, CORS และรูปแบบข้อมูล API");
+      }
+    }
+
+    refreshButton.addEventListener("click", loadRanking);
+    statSelect.addEventListener("change", loadRanking);
+
+    loadRanking();
+    setInterval(loadRanking, 5000);
+  </script>
+</body>
+</html>
